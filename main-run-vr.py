@@ -1,16 +1,26 @@
+!pip install tensorboard-pytorch==0.7.1
+!pip install tensorboardX==0.8
+!pip install tensorflow-tensorboard==0.4.0
+
+#!pip install tensorboard==1.0.0a6 
+#!pip install tensorflow==1.4.0 
+!pip install tensorboard==1.6.0
+!pip install tensorflow==1.4.0
+from tensorboard import version
+print(version.VERSION)
+!python --version
 import torch
 import os
 import glob
-from spatial_transforms import (Compose, ToTensor, FiveCrops, Scale, Normalize, MultiScaleCornerCrop,
-                                RandomHorizontalFlip, TenCrops, FlippedImagesTest, CenterCrop)
-from makeDataset import *
-from createModel import *
+#from spatial_transforms import (Compose, ToTensor, FiveCrops, Scale, Normalize, MultiScaleCornerCrop,RandomHorizontalFlip, TenCrops, FlippedImagesTest, CenterCrop)
+#from makeDataset import *
+#from createModel import *
 from tensorboardX import SummaryWriter
 import sys
-import argparse
-
-
-
+#import argparse
+ 
+ 
+ 
 def make_split(fights_dir, noFights_dir):
     imagesF = []
     for target in sorted(os.listdir(fights_dir)):
@@ -28,31 +38,31 @@ def make_split(fights_dir, noFights_dir):
     Labels = list([1] * len(imagesF)) + list([0] * len(imagesNoF))
     NumFrames = [len(glob.glob1(Dataset[i], "*.jpg")) for i in range(len(Dataset))]
     return Dataset, Labels, NumFrames
-
+ 
 def main_run(numEpochs, lr, stepSize, decayRate, trainBatchSize, seqLen, memSize,
              evalInterval, evalMode, numWorkers, outDir, fightsDir_train, noFightsDir_train,
              fightsDir_test, noFightsDir_test):
-
+ 
     train_dataset_dir_fights = fightsDir_train
     train_dataset_dir_noFights = noFightsDir_train
     test_dataset_dir_fights = fightsDir_test
     test_dataset_dir_noFights = noFightsDir_test
-
+ 
     trainDataset, trainLabels, trainNumFrames = make_split(train_dataset_dir_fights, train_dataset_dir_noFights)
     testDataset, testLabels, testNumFrames = make_split(test_dataset_dir_fights, test_dataset_dir_noFights)
-
+ 
     mean=[0.485, 0.456, 0.406]
     std=[0.229, 0.224, 0.225]
     normalize = Normalize(mean=mean, std=std)
     spatial_transform = Compose([Scale(256), RandomHorizontalFlip(), MultiScaleCornerCrop([1, 0.875, 0.75, 0.65625], 224),
                                  ToTensor(), normalize])
-
+ 
     vidSeqTrain = makeDataset(trainDataset, trainLabels, trainNumFrames, spatial_transform=spatial_transform,
                                 seqLen=seqLen)
-
+ 
     trainLoader = torch.utils.data.DataLoader(vidSeqTrain, batch_size=trainBatchSize,
                             shuffle=True, num_workers=numWorkers, pin_memory=True, drop_last=True)
-
+ 
     if evalMode == 'centerCrop':
         test_spatial_transform = Compose([Scale(256), CenterCrop(224), ToTensor(), normalize])
         testBatchSize = 1
@@ -65,21 +75,21 @@ def main_run(numEpochs, lr, stepSize, decayRate, trainBatchSize, seqLen, memSize
     elif evalMode == 'horFlip':
         test_spatial_transform = Compose([Scale(256), CenterCrop(224), FlippedImagesTest(mean=mean, std=std)])
         testBatchSize = 1
-
+ 
     vidSeqTest = makeDataset(testDataset, testLabels, testNumFrames, seqLen=seqLen,
     spatial_transform=test_spatial_transform)
-
-
+ 
+ 
     testLoader = torch.utils.data.DataLoader(vidSeqTest, batch_size=testBatchSize,
                             shuffle=False, num_workers=int(numWorkers/2), pin_memory=True)
-
-
+ 
+ 
     numTrainInstances = vidSeqTrain.__len__()
     numTestInstances = vidSeqTest.__len__()
-
+ 
     print('Number of training samples = {}'.format(numTrainInstances))
     print('Number of testing samples = {}'.format(numTestInstances))
-
+ 
     modelFolder = './experiments_' + outDir # Dir for saving models and log files
     # Create the dir
     if os.path.exists(modelFolder):
@@ -93,24 +103,24 @@ def main_run(numEpochs, lr, stepSize, decayRate, trainBatchSize, seqLen, memSize
     trainLogAcc = open((modelFolder + '/trainLogAcc.txt'), 'w')
     testLogLoss = open((modelFolder + '/testLogLoss.txt'), 'w')
     testLogAcc = open((modelFolder + '/testLogAcc.txt'), 'w')
-
-
+ 
+ 
     model = ViolenceModel(mem_size=memSize)
-
-
+ 
+ 
     trainParams = []
     for params in model.parameters():
         params.requires_grad = True
         trainParams += [params]
     model.train(True)
     model.cuda()
-
+ 
     lossFn = nn.CrossEntropyLoss()
     optimizerFn = torch.optim.RMSprop(trainParams, lr=lr)
     optimScheduler = torch.optim.lr_scheduler.StepLR(optimizerFn, stepSize, decayRate)
-
+ 
     minAccuracy = 50
-
+ 
     for epoch in range(numEpochs):
         optimScheduler.step()
         epochLoss = 0
@@ -139,7 +149,7 @@ def main_run(numEpochs, lr, stepSize, decayRate, trainBatchSize, seqLen, memSize
         writer.add_scalar('train/accuracy', trainAccuracy, epoch+1)
         trainLogLoss.write('Training loss after {} epoch = {}\n'.format(epoch+1, avgLoss))
         trainLogAcc.write('Training accuracy after {} epoch = {}\n'.format(epoch+1, trainAccuracy))
-
+ 
         if (epoch+1) % evalInterval == 0:
             model.train(False)
             print('Evaluating...')
@@ -177,43 +187,43 @@ def main_run(numEpochs, lr, stepSize, decayRate, trainBatchSize, seqLen, memSize
     writer.export_scalars_to_json(modelFolder + "/all_scalars.json")
     writer.close()
     return True
-
+ 
 def __main__():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--numEpochs', type=int, default=100, help='Number of epochs')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
-    parser.add_argument('--stepSize', type=int, default=25, help='Learning rate decay step')
-    parser.add_argument('--decayRate', type=float, default=0.5, help='Learning rate decay rate')
-    parser.add_argument('--seqLen', type=int, default=20, help='Length of sequence')
-    parser.add_argument('--trainBatchSize', type=int, default=16, help='Training batch size')
-    parser.add_argument('--memSize', type=int, default=256, help='ConvLSTM hidden state size')
-    parser.add_argument('--evalInterval', type=int, default=5, help='Evaluation interval')
-    parser.add_argument('--evalMode', type=str, default='horFlip', help='Evaluation mode', choices=['centerCrop', 'horFlip', 'fiveCrops', 'tenCrops'])
-    parser.add_argument('--numWorkers', type=int, default=4, help='Number of workers for dataloader')
-    parser.add_argument('--outDir', type=str, default='violence', help='Output directory')
-    parser.add_argument('--fightsDirTrain', type=str, default='./datasets/violent_flow/frames/fights', help='Directory containing training fight sequences')
-    parser.add_argument('--noFightsDirTrain', type=str, default='./datasets/violent_flow/frames/noFights', help='Directory containing training non-fight sequences')
-    parser.add_argument('--fightsDirTest', type=str, default='./datasets/violent_flow/frames/fights', help='Directory containing testing fight sequences')
-    parser.add_argument('--noFightsDirTest', type=str, default='./datasets/violent_flow/frames/noFights', help='Directory containing testing non-fight sequences')
-    args = parser.parse_args()
-
-    numEpochs = args.numEpochs
-    lr = args.lr
-    stepSize = args.stepSize
-    decayRate = args.decayRate
-    seqLen = args.seqLen
-    trainBatchSize = args.trainBatchSize
-    memSize = args.memSize
-    evalInterval = args.evalInterval
-    evalMode = args.evalMode
-    numWorkers = args.numWorkers
-    outDir = args.outDir
-    fightsDir_train = args.fightsDirTrain
-    noFightsDir_train = args.noFightsDirTrain
-    fightsDir_test = args.fightsDirTest
-    noFightsDir_test = args.noFightsDirTest
+    #parser = argparse.ArgumentParser()
+    #parser.add_argument('--numEpochs', type=int, default=100, help='Number of epochs')
+    #parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
+    #parser.add_argument('--stepSize', type=int, default=25, help='Learning rate decay step')
+    #parser.add_argument('--decayRate', type=float, default=0.5, help='Learning rate decay rate')
+    #parser.add_argument('--seqLen', type=int, default=20, help='Length of sequence')
+    #parser.add_argument('--trainBatchSize', type=int, default=16, help='Training batch size')
+    #parser.add_argument('--memSize', type=int, default=256, help='ConvLSTM hidden state size')
+    #parser.add_argument('--evalInterval', type=int, default=5, help='Evaluation interval')
+    #parser.add_argument('--evalMode', type=str, default='horFlip', help='Evaluation mode', choices=['centerCrop', 'horFlip', 'fiveCrops', 'tenCrops'])
+    #parser.add_argument('--numWorkers', type=int, default=4, help='Number of workers for dataloader')
+    #parser.add_argument('--outDir', type=str, default='violence', help='Output directory')
+    #parser.add_argument('--fightsDirTrain', type=str, default='./datasets/violent_flow/frames/fights', help='Directory containing training fight sequences')
+    #parser.add_argument('--noFightsDirTrain', type=str, default='./datasets/violent_flow/frames/noFights', help='Directory containing training non-fight sequences')
+    #parser.add_argument('--fightsDirTest', type=str, default='./datasets/violent_flow/frames/fights', help='Directory containing testing fight sequences')
+    #parser.add_argument('--noFightsDirTest', type=str, default='./datasets/violent_flow/frames/noFights', help='Directory containing testing non-fight sequences')
+    #args = parser.parse_args()
+ 
+    numEpochs = 100
+    lr = 1e-4
+    stepSize = 25
+    decayRate = 0.5
+    seqLen = 20
+    trainBatchSize = 16
+    memSize = 256
+    evalInterval = 5
+    evalMode = 'horFlip'
+    numWorkers = 4
+    outDir = 'violence'
+    fightsDir_train = './datasets/violent_flow/frames/fights'
+    noFightsDir_train = './datasets/violent_flow/frames/noFights'
+    fightsDir_test = './datasets/violent_flow/frames/fights'
+    noFightsDir_test = './datasets/violent_flow/frames/noFights'
     main_run(numEpochs, lr, stepSize, decayRate, trainBatchSize, seqLen, memSize,
              evalInterval, evalMode, numWorkers, outDir, fightsDir_train,
              noFightsDir_train, fightsDir_test, noFightsDir_test)
-
+ 
 __main__()
